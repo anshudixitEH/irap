@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
 import folium
-import requests
 from streamlit_folium import st_folium
+from folium.plugins import MarkerCluster
+import requests
 import time
 from cachetools import TTLCache
 import matplotlib.colors as mcolors
@@ -43,7 +44,7 @@ def throttled_get_osrm_route(start_lat, start_lon, end_lat, end_lon):
         time.sleep(1)  # 1 second delay between requests to comply with rate limits
 
 # Step 2: Caching the data to avoid reloading the same file repeatedly
-@st.cache
+@st.cache_data
 def load_data(uploaded_file):
     df = pd.read_csv(uploaded_file)
     return df
@@ -115,10 +116,10 @@ if uploaded_file is not None:
                          (df['RoadNumber'].isin(selected_road_numbers)) &
                          (df['Speed_Limit'].isin(selected_speed_limits))]
 
-        # Step 7: Optimize Data Display by limiting points (e.g., display first 500 rows)
-        if len(filtered_df) > 500:
-            st.write("Large dataset, sampling 500 points for better performance.")
-            filtered_df = filtered_df.sample(n=500)
+        # Step 7: Optimize Data Display by limiting points
+        if len(filtered_df) > 200:
+            st.write("Large dataset, sampling 200 points for better performance.")
+            filtered_df = filtered_df.sample(n=200)
 
         # Get min and max KSI for color mapping
         ksi_min = filtered_df['KSI_Count'].min()
@@ -128,7 +129,10 @@ if uploaded_file is not None:
         if not filtered_df.empty:
             center_lat = filtered_df['latitude_S'].mean()
             center_lon = filtered_df['longitude_S'].mean()
-            m = folium.Map(location=[center_lat, center_lon], zoom_start=13)
+            m = folium.Map(location=[center_lat, center_lon], zoom_start=12, tiles='cartodbpositron')  # Using a lighter tile
+
+            # Add Marker Cluster
+            marker_cluster = MarkerCluster().add_to(m)
 
             # Step 9: Plot data on the Folium map using CircleMarkers with colors based on KSI
             for _, row in filtered_df.iterrows():
@@ -142,25 +146,7 @@ if uploaded_file is not None:
                     fill=True,
                     fill_opacity=0.7,
                     popup=f"KSI: {row['KSI_Count']} | Speed: {row['Speed_Limit']}",
-                ).add_to(m)
-
-                # Fetch the route (entire road) and highlight it in light blue
-                route_coords = throttled_get_osrm_route(row['latitude_S'], row['longitude_S'], row['Intermediate_Lat_End'], row['Intermediate_Lon_End'])
-                if route_coords:
-                    # Plot the entire route in light blue
-                    folium.PolyLine(route_coords, color="lightblue", weight=3, opacity=0.5).add_to(m)
-
-                # Fetch the route for the intermediate points and highlight it in dark blue
-                intermediate_route_coords = throttled_get_osrm_route(row['Intermediate_Lat_Start'], row['Intermediate_Lon_Start'], row['Intermediate_Lat_End'], row['Intermediate_Lon_End'])
-                if intermediate_route_coords:
-                    # Plot the intermediate segment route in dark blue
-                    folium.PolyLine(intermediate_route_coords, color="darkblue", weight=4, opacity=1).add_to(m)
-                else:
-                    # Fallback in case route fetching fails (optional)
-                    folium.PolyLine(
-                        [(row['Intermediate_Lat_Start'], row['Intermediate_Lon_Start']), (row['Intermediate_Lat_End'], row['Intermediate_Lon_End'])],
-                        color="darkblue", weight=4, opacity=1
-                    ).add_to(m)
+                ).add_to(marker_cluster)  # Add to marker cluster
 
             # Step 10: Display the map
             st_folium(m, width=1000, height=600)
