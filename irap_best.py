@@ -6,7 +6,7 @@ import requests
 import time
 from cachetools import TTLCache
 import matplotlib.colors as mcolors
-from folium.plugins import MousePosition
+from folium.plugins import MousePosition, MarkerCluster
 
 # Set Streamlit layout to wide
 st.set_page_config(layout="wide")
@@ -116,7 +116,7 @@ if uploaded_file is not None:
                          (df['RoadNumber'].isin(selected_road_numbers)) &
                          (df['Speed_Limit'].isin(selected_speed_limits))]
 
-        # Step 7: Optimize Data Display by limiting points (e.g., display first 500 rows)
+        # Step 7: Optimize Data Display by limiting points
         if len(filtered_df) > 500:
             st.write("Large dataset, sampling 500 points for better performance.")
             filtered_df = filtered_df.sample(n=500)
@@ -134,8 +134,8 @@ if uploaded_file is not None:
             # Add a click event listener that does nothing
             m.add_child(folium.LatLngPopup())  # Just shows coordinates on click for debugging
 
-            # Optionally, add a MousePosition plugin to show lat/lon but do nothing
-            MousePosition().add_to(m)
+            # Add Marker Cluster
+            marker_cluster = MarkerCluster().add_to(m)
 
             # Step 9: Plot data on the Folium map using CircleMarkers with colors based on KSI
             for _, row in filtered_df.iterrows():
@@ -149,7 +149,7 @@ if uploaded_file is not None:
                     fill=True,
                     fill_opacity=0.7,
                     popup=f"KSI: {row['KSI_Count']} | Speed: {row['Speed_Limit']}",
-                ).add_to(m)
+                ).add_to(marker_cluster)  # Add to marker cluster
 
                 # Fetch the route (entire road) and highlight it in light blue
                 route_coords = throttled_get_osrm_route(row['latitude_S'], row['longitude_S'], row['Intermediate_Lat_End'], row['Intermediate_Lon_End'])
@@ -157,22 +157,4 @@ if uploaded_file is not None:
                     # Plot the entire route in light blue
                     folium.PolyLine(route_coords, color="lightblue", weight=3, opacity=0.5).add_to(m)
 
-                # Fetch the route for the intermediate points and highlight it in dark blue
-                intermediate_route_coords = throttled_get_osrm_route(row['Intermediate_Lat_Start'], row['Intermediate_Lon_Start'], row['Intermediate_Lat_End'], row['Intermediate_Lon_End'])
-                if intermediate_route_coords:
-                    # Plot the intermediate segment route in dark blue
-                    folium.PolyLine(intermediate_route_coords, color="darkblue", weight=4, opacity=1).add_to(m)
-                else:
-                    # Fallback in case route fetching fails (optional)
-                    folium.PolyLine(
-                        [(row['Intermediate_Lat_Start'], row['Intermediate_Lon_Start']), (row['Intermediate_Lat_End'], row['Intermediate_Lon_End'])],
-                        color="darkblue", weight=4, opacity=1
-                    ).add_to(m)
-
-            # Step 10: Display the map
-            st_folium(m, width=1000, height=600)
-
-        else:
-            st.write("No data matches the selected filters.")
-else:
-    st.info("Please upload a CSV file to visualize the routes.")
+               
